@@ -1,6 +1,20 @@
 [package]
-name = "GeneratePrevisibines"
-version = "0.1.0"
-edition = "2024"
+name = "generate_previsbines"
+version = "2.6.0"
+edition = "2021"
+authors = ["Original by PJM, Rust port by March 2025"]
+description = "A tool to build precombine/Previs data for Fallout 4 mods"
 
 [dependencies]
+clap = { version = "4.4", features = ["derive"] }
+env_logger = "0.11.7"
+log = "0.4"
+regex = "1.10"
+winreg = "0.55.0"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
