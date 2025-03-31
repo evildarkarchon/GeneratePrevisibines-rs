@@ -60,6 +60,10 @@ struct Args {
     /// Path to Fallout 4 installation directory
     #[arg(long)]
     fallout4_path: Option<String>,
+
+    #[arg(long)]
+    /// Stage of the process to start from
+    start_stage: Option<i32>,
     
     /// Don't prompt for confirmation, just execute
     #[arg(short, long)]
