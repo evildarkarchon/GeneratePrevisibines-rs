@@ -122,7 +122,7 @@ impl PrevisbineBuilder {
         // Extract plugin name
         let (plugin_name, plugin_name_ext) = if let Some(plugin) = args.plugin.clone() {
             let plugin_lowercase = plugin.to_lowercase();
-            if plugin_lowercase.ends_with(".esp") || plugin_lowercase.ends_with(".esm") {
+            if plugin_lowercase.ends_with(".esp") || plugin_lowercase.ends_with(".esm") || plugin_lowercase.ends_with(".esl") {
                 let name = plugin.clone();
                 let name_without_ext = name.rfind('.').map(|i| &name[0..i]).unwrap_or(&name).to_string();
                 (name_without_ext, plugin)
