@@ -1106,6 +1106,9 @@ impl PrevisbineBuilder {
         println!("If you use MO2 then this must be run from within MO2");
         println!();
 
+        // Always verify environment first - this is critical
+        self.verify_environment()?;
+
         // Determine starting stage
         let start_stage = if let Some(stage) = self.args.start_stage {
             match BuildStage::from_i32(stage) {
