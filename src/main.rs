@@ -1123,16 +1123,18 @@ impl PrevisbineBuilder {
             }
         } else if self.plugin_name.is_empty() {
             // No plugin specified on command line
-            if !self.args.no_prompt {
-                self.prompt_for_plugin_name()?;
+            self.prompt_for_plugin_name()?;
+            let plugin_path = self.paths.fallout4.join("Data").join(&self.plugin_name_ext);
+            if plugin_path.exists() {
+                // Plugin already exists, prompt for stage
+                self.prompt_for_stage(&self.args.mode)?
             } else {
-                return Err("ERROR - No plugin specified and --no-prompt was used".to_string());
+                BuildStage::VerifyEnvironment
             }
-            BuildStage::VerifyEnvironment
         } else {
             // Plugin specified but check if it already exists
             let plugin_path = self.paths.fallout4.join("Data").join(&self.plugin_name_ext);
-            if plugin_path.exists() && !self.args.no_prompt {
+            if plugin_path.exists() {
                 // Plugin already exists, prompt for stage
                 self.prompt_for_stage(&self.args.mode)?
             } else {
