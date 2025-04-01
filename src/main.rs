@@ -57,7 +57,6 @@ impl BuildStage {
 
     fn display_stages(build_mode: &BuildMode) -> String {
         let mut result = String::new();
-        result.push_str("[0] Verify Environment\n");
         result.push_str("[1] Generate Precombines Via CK\n");
         result.push_str("[2] Merge PrecombineObjects.esp Via FO4Edit\n");
         result.push_str("[3] Create BA2 Archive from Precombines\n");
@@ -1106,9 +1105,6 @@ impl PrevisbineBuilder {
         println!("If you use MO2 then this must be run from within MO2");
         println!();
 
-        // Always verify environment first - this is critical
-        self.verify_environment()?;
-
         // Determine starting stage
         let start_stage = if let Some(stage) = self.args.start_stage {
             match BuildStage::from_i32(stage) {
@@ -1145,11 +1141,8 @@ impl PrevisbineBuilder {
         // Get stage as integer for comparisons
         let start_stage_val = start_stage as i32;
 
-        // Always verify environment unless skipped
-        if start_stage_val <= BuildStage::VerifyEnvironment as i32 {
-            self.verify_environment()?;
-            self.check_plugin()?;
-        }
+        self.verify_environment()?;
+        self.check_plugin()?;
 
         // Precombine phase
         if start_stage_val <= BuildStage::GeneratePrecombines as i32 {
