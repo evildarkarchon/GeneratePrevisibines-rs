@@ -110,7 +110,7 @@ struct Args {
     #[arg(long)]
     fallout4_path: Option<String>,
 
-    #[arg(long)]
+    #[arg(long, default_value = "0")]
     /// Stage of the process to start from
     start_stage: Option<i32>,
 
@@ -510,12 +510,24 @@ impl PrevisbineBuilder {
             let mut content = String::new();
             file.read_to_string(&mut content)
                 .map_err(|e| format!("Error reading {}: {}", script_path.display(), e))?;
-
-            if !content.contains(version) {
+            
+            // Extract actual version from the script with regex
+            let re = Regex::new(r"V(\d+\.\d+)").unwrap();
+            let script_version = re.captures(&content)
+                .and_then(|cap| cap.get(1))
+                .map(|m| m.as_str())
+                .ok_or_else(|| format!("ERROR - Cannot determine version of {}", script_path.display()))?;
+            
+            // Extract required version number
+            let required_version_num = version.trim_start_matches('V');
+            
+            // Compare versions (simple string comparison works for X.Y format)
+            if script_version < required_version_num {
                 return Err(format!(
-                    "ERROR - Old Script {} found, {} required",
+                    "ERROR - Old Script {} found (V{}), V{} or newer required",
                     script_path.display(),
-                    version
+                    script_version,
+                    required_version_num
                 ));
             }
         }
