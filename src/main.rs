@@ -110,7 +110,7 @@ struct Args {
     #[arg(long)]
     fallout4_path: Option<String>,
 
-    #[arg(long, default_value = "0")]
+    #[arg(long)]
     /// Stage of the process to start from
     start_stage: Option<i32>,
 
