@@ -226,6 +226,94 @@ impl PrevisbineBuilder {
             unattended_logfile,
         })
     }
+    
+fn prompt_for_plugin_name(&mut self) -> Result<(), String> {
+    println!("No plugin specified. Please enter a plugin name:");
+    print!("Enter plugin name: ");
+    io::stdout().flush().unwrap();
+
+    let mut input = String::new();
+    io::stdin()
+        .read_line(&mut input)
+        .map_err(|e| format!("Error reading input: {}", e))?;
+
+    let plugin_name = input.trim().to_string();
+    if plugin_name.is_empty() {
+        return Err("No plugin name entered".to_string());
+    }
+
+    // Extract plugin name and extension
+    if plugin_name.to_lowercase().ends_with(".esp")
+        || plugin_name.to_lowercase().ends_with(".esm")
+        || plugin_name.to_lowercase().ends_with(".esl") {
+        let name_without_ext = plugin_name
+            .rfind('.')
+            .map(|i| &plugin_name[0..i])
+            .unwrap_or(&plugin_name)
+            .to_string();
+        self.plugin_name = name_without_ext;
+        self.plugin_name_ext = plugin_name;
+    } else {
+        self.plugin_name = plugin_name.clone(); // Clone it before moving
+        self.plugin_name_ext = format!("{}.esp", plugin_name);
+    }
+
+    // Update plugin_archive as well
+    self.plugin_archive = format!("{} - Main.ba2", &self.plugin_name);
+
+    Ok(())
+}
+
+    // Add this new method to prompt for stage number
+    fn prompt_for_stage(&self, build_mode: &BuildMode) -> Result<BuildStage, String> {
+        println!("Plugin already exists. Choose a stage to start from:");
+
+        // Print all stages except VerifyEnvironment (0)
+        for stage in 1..=8 {
+            if let Some(build_stage) = BuildStage::from_i32(stage) {
+                // Skip stages that aren't applicable for the current build mode
+                if (build_mode != &BuildMode::Clean)
+                    && (build_stage == BuildStage::CompressPsg
+                        || build_stage == BuildStage::BuildCdx)
+                {
+                    continue;
+                }
+                println!("[{}] {}", stage, self.get_stage_description(build_stage));
+            }
+        }
+
+        print!("Enter stage number (1-8): ");
+        io::stdout().flush().unwrap();
+
+        let mut input = String::new();
+        io::stdin()
+            .read_line(&mut input)
+            .map_err(|e| format!("Error reading input: {}", e))?;
+
+        let stage_num = input
+            .trim()
+            .parse::<i32>()
+            .map_err(|_| "Invalid stage number".to_string())?;
+
+        BuildStage::from_i32(stage_num)
+            .ok_or_else(|| format!("Invalid stage number: {}", stage_num))
+    }
+
+    // Helper method to get descriptive stage names
+    fn get_stage_description(&self, stage: BuildStage) -> &'static str {
+        match stage {
+            BuildStage::VerifyEnvironment => "Verify Environment",
+            BuildStage::GeneratePrecombines => "Generate Precombines Via CK",
+            BuildStage::MergePrecombines => "Merge PrecombineObjects.esp Via FO4Edit",
+            BuildStage::ArchivePrecombines => "Create BA2 Archive from Precombines",
+            BuildStage::CompressPsg => "Compress PSG Via CK",
+            BuildStage::BuildCdx => "Build CDX Via CK",
+            BuildStage::GeneratePrevis => "Generate Previs Via CK",
+            BuildStage::MergePrevis => "Merge Previs.esp Via FO4Edit",
+            BuildStage::ArchiveVis => "Add vis files to BA2 Archive",
+        }
+    }
+
     fn display_stages(&self) {
         println!("Available stages to resume from:");
         print!("{}", BuildStage::display_stages(&self.args.mode));
@@ -510,17 +598,23 @@ impl PrevisbineBuilder {
             let mut content = String::new();
             file.read_to_string(&mut content)
                 .map_err(|e| format!("Error reading {}: {}", script_path.display(), e))?;
-            
+
             // Extract actual version from the script with regex
             let re = Regex::new(r"V(\d+\.\d+)").unwrap();
-            let script_version = re.captures(&content)
+            let script_version = re
+                .captures(&content)
                 .and_then(|cap| cap.get(1))
                 .map(|m| m.as_str())
-                .ok_or_else(|| format!("ERROR - Cannot determine version of {}", script_path.display()))?;
-            
+                .ok_or_else(|| {
+                    format!(
+                        "ERROR - Cannot determine version of {}",
+                        script_path.display()
+                    )
+                })?;
+
             // Extract required version number
             let required_version_num = version.trim_start_matches('V');
-            
+
             // Compare versions (simple string comparison works for X.Y format)
             if script_version < required_version_num {
                 return Err(format!(
@@ -1023,8 +1117,23 @@ impl PrevisbineBuilder {
                     return Err(format!("ERROR - Invalid stage number: {}", stage));
                 }
             }
-        } else {
+        } else if self.plugin_name.is_empty() {
+            // No plugin specified on command line
+            if !self.args.no_prompt {
+                self.prompt_for_plugin_name()?;
+            } else {
+                return Err("ERROR - No plugin specified and --no-prompt was used".to_string());
+            }
             BuildStage::VerifyEnvironment
+        } else {
+            // Plugin specified but check if it already exists
+            let plugin_path = self.paths.fallout4.join("Data").join(&self.plugin_name_ext);
+            if plugin_path.exists() && !self.args.no_prompt {
+                // Plugin already exists, prompt for stage
+                self.prompt_for_stage(&self.args.mode)?
+            } else {
+                BuildStage::VerifyEnvironment
+            }
         };
 
         // Get stage as integer for comparisons
