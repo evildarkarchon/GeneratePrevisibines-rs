@@ -348,7 +348,7 @@ impl PrevisbineBuilder {
                 return Err(format!("ERROR - Plugin {} does not exist", self.plugin_name_ext));
             }
             
-            if !self.prompt_yes_no(&format!("Plugin does not exist, Rename xPrevisPatch.esp to this? [Y/N]"))? {
+            if !self.prompt_yes_no(&"Plugin does not exist, Rename xPrevisPatch.esp to this? [Y/N]".to_string())? {
                 return Err("User cancelled".to_string());
             }
             
