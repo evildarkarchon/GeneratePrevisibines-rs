@@ -120,10 +120,14 @@ struct Args {
     /// Specify files to keep after completion
     #[arg(short, long)]
     keep_files: bool,
-    
+
     /// Use BSArch instead of Archive2
     #[arg(short, long)]
     use_bsarch: bool,
+    
+    /// BSArch Path (Requires --use-bsarch)
+    #[arg(long)]
+    bsarch_path: Option<String>,
 }
 
 struct Paths {
