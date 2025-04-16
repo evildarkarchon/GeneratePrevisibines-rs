@@ -968,7 +968,7 @@ impl PrevisbineBuilder {
             fs::remove_dir_all(precombined_dir)
                 .map_err(|e| format!("Error removing precombined directory: {}", e))?;
         } else {
-            // Just archive the new folder
+            // Archive the new folder
             self.run_archive(folder, self.get_archive_qualifiers())?;
         }
 
