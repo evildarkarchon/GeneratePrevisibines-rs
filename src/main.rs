@@ -135,6 +135,7 @@ struct Paths {
     fallout4: PathBuf,
     creation_kit: PathBuf,
     archive2: PathBuf,
+    bsarch: Option<PathBuf>,
 }
 
 struct CkpeSettings {
@@ -178,6 +179,34 @@ impl PrevisbineBuilder {
             .join("archive2")
             .join("archive2.exe");
 
+        // Handle BSArch path
+        let bsarch_path = if args.use_bsarch {
+            if let Some(path) = &args.bsarch_path {
+                Some(PathBuf::from(path))
+            } else {
+                // Try to find BSArch in common locations
+                let possible_paths = [
+                    PathBuf::from("tools").join("BSArch").join("bsarch.exe"),
+                    PathBuf::from("BSArch").join("bsarch.exe"),
+                    PathBuf::from("bsarch.exe"),
+                ];
+
+                let found_path = possible_paths.iter()
+                    .find(|p| p.exists())
+                    .cloned();
+
+                if found_path.is_none() {
+                    warn!("BSArch enabled but path not specified and not found in common locations. Will check during environment verification.");
+                }
+
+                found_path
+            }
+        } else {
+            None
+        };
+
+
+
         // Extract plugin name
         let (plugin_name, plugin_name_ext) = if let Some(plugin) = args.plugin.clone() {
             let plugin_lowercase = plugin.to_lowercase();
@@ -217,6 +246,7 @@ impl PrevisbineBuilder {
             fallout4: fallout4_path,
             creation_kit: creation_kit_path,
             archive2: archive2_path,
+            bsarch: bsarch_path,
         };
 
         // Create plugin_archive string before moving plugin_name
@@ -233,6 +263,56 @@ impl PrevisbineBuilder {
             unattended_logfile,
         })
     }
+
+    /// Executes the bsarch.exe command with the given arguments.
+    ///
+    /// # Arguments
+    /// * `action` - A descriptive string for the action being performed (e.g., "packing", "extracting"). Used for logging.
+    /// * `bsarch_args` - A slice of string slices representing the arguments to pass to bsarch.exe.
+    ///
+    /// # Returns
+    /// * `Ok(())` if the command executes successfully (exit code 0).
+    /// * `Err(String)` if bsarch path is not configured, the command fails to start, or returns a non-zero exit code.
+    fn run_bsarch(&self, action: &str, bsarch_args: &[&str]) -> Result<(), String> {
+        // Ensure bsarch path is available
+        let bsarch_path = self.paths.bsarch.as_ref()
+            .ok_or_else(|| "BSArch path is not configured. Cannot run bsarch.".to_string())?;
+
+        info!("Running BSArch to perform action: '{}' with args: {:?}", action, bsarch_args);
+        info!("Executing: {} {}", bsarch_path.display(), bsarch_args.join(" "));
+
+        let mut command = Command::new(bsarch_path);
+        command.args(bsarch_args);
+
+        // Execute the command and capture status
+        match command.status() {
+            Ok(status) => {
+                if status.success() {
+                    info!("BSArch action '{}' completed successfully.", action);
+                    Ok(())
+                } else {
+                    let error_msg = format!(
+                        "BSArch action '{}' failed with exit code: {:?}.",
+                        action,
+                        status.code().unwrap_or(-1) // Provide a default if no code available
+                    );
+                    error!("{}", error_msg);
+                    Err(error_msg)
+                }
+            }
+            Err(e) => {
+                let error_msg = format!(
+                    "Failed to execute BSArch for action '{}': {}. Path: {}",
+                    action,
+                    e,
+                    bsarch_path.display()
+                );
+                error!("{}", error_msg);
+                Err(error_msg)
+            }
+        }
+    }
+
 
     fn prompt_for_plugin_name(&mut self) -> Result<(), String> {
         println!("No plugin specified. Please enter a plugin name:");
@@ -691,6 +771,18 @@ impl PrevisbineBuilder {
             );
         }
 
+        // Check for BSArch if enabled
+        if self.args.use_bsarch {
+            if let Some(bsarch_path) = &self.paths.bsarch {
+                if !bsarch_path.exists() {
+                    return Err(format!("BSArch enabled but not found at specified path: {}", bsarch_path.display()));
+                }
+            } else {
+                return Err("BSArch enabled but no path specified. Use --bsarch-path to specify the location.".to_string());
+            }
+        }
+
+
         Ok(())
     }
 
@@ -845,91 +937,136 @@ impl PrevisbineBuilder {
         Ok(())
     }
 
+    /// Executes Archive2.exe to create a BA2 archive with the given folders.
+    ///
+    /// # Arguments
+    /// * `folders` - A comma-separated list of folders to include in the archive
+    /// * `qualifiers` - Additional qualifiers to pass to archive2 (e.g., compression type)
+    ///
+    /// # Returns
+    /// * `Ok(())` if the archive is created successfully
+    /// * `Err(String)` if the command fails
     fn run_archive(&self, folders: &str, qualifiers: &str) -> Result<(), String> {
-        info!("Creating archive {} for {}", self.plugin_archive, folders);
+        let data_dir = self.paths.fallout4.join("Data");
+        let archive_path = data_dir.join(&self.plugin_archive);
 
-        let mut log_file = File::options()
-            .append(true)
-            .create(true)
-            .open(&self.logfile)
-            .map_err(|e| format!("Error opening log file {}: {}", self.logfile.display(), e))?;
+        info!("Creating archive: {} with folders: {}", self.plugin_archive, folders);
 
-        writeln!(
-            log_file,
-            "Creating {} Archive {} of {}:",
-            qualifiers, self.plugin_archive, folders
-        )
-        .map_err(|e| format!("Error writing to log file: {}", e))?;
-        writeln!(log_file, "====================================")
-            .map_err(|e| format!("Error writing to log file: {}", e))?;
+        if self.args.use_bsarch {
+            // BSArch command format
+            let format = if self.args.mode == BuildMode::Xbox { "Xbox" } else { "General" };
 
-        let args = format!(
-            "{} -c=\"{}\" {} -f=General -q",
-            folders, self.plugin_archive, qualifiers
-        );
+            let data_dir_str = data_dir.to_string_lossy();
+            let archive_path_str = archive_path.to_string_lossy();
 
-        let output = Command::new(&self.paths.archive2)
-            .current_dir(self.paths.fallout4.join("Data"))
-            .args(args.split_whitespace())
-            .output()
-            .map_err(|e| format!("Error executing Archive2: {}", e))?;
+            let bsarch_args = vec![
+                "pack",
+                &data_dir_str,
+                &archive_path_str,
+                format,
+                "--include",
+                folders
+            ];
 
-        let exit_code = output.status.code().unwrap_or(-1);
+            // Add any additional BSArch-specific arguments here
 
-        writeln!(log_file, "{}", String::from_utf8_lossy(&output.stdout))
-            .map_err(|e| format!("Error writing to log file: {}", e))?;
+            self.run_bsarch("packing", &bsarch_args.iter().map(|s| *s).collect::<Vec<&str>>())
+        } else {
+            // Original Archive2 implementation
+            let archive2_exe = &self.paths.archive2;
+            let mut command = Command::new(archive2_exe);
+            command.current_dir(&data_dir)
+                .arg(folders)
+                .arg("-c=".to_owned() + &self.plugin_archive)
+                .arg(qualifiers)
+                .arg("-f=General")
+                .arg("-q");
 
-        if exit_code != 0 {
-            return Err(format!("ERROR - Archive2 failed with error {}", exit_code));
+            // Execute and check result
+            match command.output() {
+                Ok(output) => {
+                    if output.status.success() {
+                        if !archive_path.exists() {
+                            return Err(format!("Archive was not created: {}", self.plugin_archive));
+                        }
+                        Ok(())
+                    } else {
+                        let error = String::from_utf8_lossy(&output.stderr);
+                        Err(format!("Archive2 failed: {}", error))
+                    }
+                }
+                Err(e) => Err(format!("Failed to execute Archive2: {}", e))
+            }
         }
-
-        let archive_path = self.paths.fallout4.join("Data").join(&self.plugin_archive);
-        if !archive_path.exists() {
-            return Err("ERROR - No plugin archive Created".to_string());
-        }
-
-        Ok(())
     }
 
+
+    /// Extracts the plugin's archive to the Data directory.
+    ///
+    /// # Returns
+    /// * `Ok(())` if the extraction is successful
+    /// * `Err(String)` if the command fails
     fn extract_archive(&self) -> Result<(), String> {
-        info!("Extracting archive {}", self.plugin_archive);
+        let data_dir = self.paths.fallout4.join("Data");
+        let archive_path = data_dir.join(&self.plugin_archive);
 
-        let mut log_file = File::options()
-            .append(true)
-            .create(true)
-            .open(&self.logfile)
-            .map_err(|e| format!("Error opening log file {}: {}", self.logfile.display(), e))?;
-
-        writeln!(log_file, "Extracting Archive {}:", self.plugin_archive)
-            .map_err(|e| format!("Error writing to log file: {}", e))?;
-        writeln!(log_file, "====================================")
-            .map_err(|e| format!("Error writing to log file: {}", e))?;
-
-        let args = format!("{} -e=. -q", self.plugin_archive);
-
-        let output = Command::new(&self.paths.archive2)
-            .current_dir(self.paths.fallout4.join("Data"))
-            .args(args.split_whitespace())
-            .output()
-            .map_err(|e| format!("Error executing Archive2: {}", e))?;
-
-        let exit_code = output.status.code().unwrap_or(-1);
-
-        writeln!(log_file, "{}", String::from_utf8_lossy(&output.stdout))
-            .map_err(|e| format!("Error writing to log file: {}", e))?;
-
-        if exit_code != 0 {
-            return Err(format!(
-                "ERROR - Archive2 Extract failed with error {}",
-                exit_code
-            ));
+        if !archive_path.exists() {
+            return Err(format!("Archive does not exist: {}", self.plugin_archive));
         }
 
-        Ok(())
+        info!("Extracting archive: {}", self.plugin_archive);
+
+        if self.args.use_bsarch {
+            // BSArch extraction command
+            let archive_path_str = archive_path.to_string_lossy();
+            let data_dir_str = data_dir.to_string_lossy();
+
+            let bsarch_args = vec![
+                "extract",
+                &archive_path_str,
+                &data_dir_str
+            ];
+
+            self.run_bsarch("extracting", &bsarch_args.iter().map(|s| *s).collect::<Vec<&str>>())
+        } else {
+            // Original Archive2 implementation
+            let archive2_exe = &self.paths.archive2;
+            let mut command = Command::new(archive2_exe);
+            command.current_dir(&data_dir)
+                .arg(&self.plugin_archive)
+                .arg("-e=.")
+                .arg("-q");
+
+            // Execute and check result
+            match command.output() {
+                Ok(output) => {
+                    if output.status.success() {
+                        Ok(())
+                    } else {
+                        let error = String::from_utf8_lossy(&output.stderr);
+                        Err(format!("Archive2 extraction failed: {}", error))
+                    }
+                }
+                Err(e) => Err(format!("Failed to execute Archive2 extraction: {}", e))
+            }
+        }
     }
 
+
+    /// Adds files from the specified folder to the plugin's archive.
+    /// Since Archive2 doesn't support adding to existing archives, this extracts
+    /// the archive first, then creates a new one with the combined content.
+    ///
+    /// # Arguments
+    /// * `folder` - The folder to add to the archive (e.g., "vis")
+    ///
+    /// # Returns
+    /// * `Ok(())` if successful
+    /// * `Err(String)` if any command fails
     fn add_to_archive(&self, folder: &str) -> Result<(), String> {
-        let archive_path = self.paths.fallout4.join("Data").join(&self.plugin_archive);
+        let data_dir = self.paths.fallout4.join("Data");
+        let archive_path = data_dir.join(&self.plugin_archive);
+        let precombined_dir = data_dir.join("meshes").join("precombined");
 
         if !archive_path.exists() {
             return self.run_archive(folder, self.get_archive_qualifiers());
@@ -938,33 +1075,46 @@ impl PrevisbineBuilder {
         // Extract existing archive
         self.extract_archive()?;
 
-        // Wait a bit
+        // Small delay to ensure files are extracted
         sleep(Duration::from_secs(5));
 
-        // Delete the existing archive
-        fs::remove_file(archive_path)
-            .map_err(|e| format!("Error removing existing archive: {}", e))?;
+        // Remove the existing archive
+        if let Err(e) = fs::remove_file(&archive_path) {
+            return Err(format!("Failed to remove existing archive: {}", e));
+        }
 
-        // Check if we have precombined meshes
-        let precombined_dir = self
-            .paths
-            .fallout4
-            .join("Data")
-            .join("meshes")
-            .join("precombined");
-        let has_precombined = precombined_dir.exists()
-            && fs::read_dir(&precombined_dir)
-                .map(|entries| entries.count() > 0)
-                .unwrap_or(false);
+        // Check if we have precombined meshes extracted
+        let has_precombined = self.directory_has_files(&precombined_dir, ".nif");
 
         if has_precombined {
             // Archive both directories
-            self.run_archive(
-                &format!("meshes\\precombined,{}", folder),
-                self.get_archive_qualifiers(),
-            )?;
+            if self.args.use_bsarch {
+                // BSArch can handle multiple includes in a single operation
+                let folders = format!("meshes\\precombined,{}", folder);
+                let format = if self.args.mode == BuildMode::Xbox { "Xbox" } else { "General" };
 
-            // Clean up
+                let data_dir_str = data_dir.to_string_lossy();
+                let archive_path_str = archive_path.to_string_lossy();
+
+                let bsarch_args = vec![
+                    "pack",
+                    &data_dir_str,
+                    &archive_path_str,
+                    format,
+                    "--include",
+                    &folders
+                ];
+
+                self.run_bsarch("packing combined folders", &bsarch_args.iter().map(|s| *s).collect::<Vec<&str>>())?;
+            } else {
+                // Original Archive2 implementation
+                self.run_archive(
+                    &format!("meshes\\precombined,{}", folder),
+                    self.get_archive_qualifiers(),
+                )?;
+            }
+
+            // Clean up precombined directory
             fs::remove_dir_all(precombined_dir)
                 .map_err(|e| format!("Error removing precombined directory: {}", e))?;
         } else {
@@ -974,6 +1124,7 @@ impl PrevisbineBuilder {
 
         Ok(())
     }
+
 
     fn get_archive_qualifiers(&self) -> &'static str {
         match self.args.mode {
