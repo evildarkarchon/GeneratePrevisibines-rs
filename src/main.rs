@@ -157,6 +157,87 @@ struct PrevisbineBuilder {
 }
 
 impl PrevisbineBuilder {
+    /// Creates a new `PrevisbineBuilder` instance by setting up necessary paths, determining plugin details, and configuring related settings.
+    ///
+    /// # Arguments
+    /// * `args` - An instance of `Args` containing input parameters passed to the builder.
+    ///
+    /// # Returns
+    /// A `Result` containing:
+    /// * `Ok(Self)` - A successfully constructed `PrevisbineBuilder` instance.
+    /// * `Err(String)` - An error message if any of the required paths or configurations cannot be determined.
+    ///
+    /// # Workflow
+    /// 1. **FO4Edit Path**:
+    ///     - Uses `args.fo4edit_path` if provided, otherwise attempts to find the path through `Self::find_fo4edit()`.
+    ///
+    /// 2. **Fallout 4 Path**:
+    ///     - Uses `args.fallout4_path` if provided, otherwise attempts to find the path through `Self::find_fallout4()`.
+    ///
+    /// 3. **Creation Kit and Archive2 Paths**:
+    ///     - Automatically resolves paths for `CreationKit.exe` and `Archive2.exe` based on the Fallout 4 installation directory.
+    ///
+    /// 4. **BSArch Path**:
+    ///     - If `args.use_bsarch` is `true`:
+    ///         - Uses `args.bsarch_path` if provided.
+    ///         - Otherwise, searches for BSArch in common locations (e.g., `tools/BSArch/bsarch.exe`).
+    ///         - If not found, logs a warning and sets the path to `None` pending environment verification.
+    ///
+    /// 5. **Plugin Name and Extension**:
+    ///     - Extracts and processes the plugin name from `args.plugin`.
+    ///     - If the provided plugin name includes an `.esp`, `.esm`, or `.esl` extension, it is preserved.
+    ///     - Otherwise, appends `.esp` as the default extension.
+    ///
+    /// 6. **Temporary and Log Files**:
+    ///     - Configures temporary directory paths for log file storage.
+    ///     - Sets up both a general log file and a log specifically for unattended scripts.
+    ///
+    /// 7. **Creation Kit Platform Extended (CKPE) Settings**:
+    ///     - Prepares CKPE-specific settings such as the relevant `.ini` file, handle and log settings, and log file configuration.
+    ///
+    /// 8. **Path Struct**:
+    ///     - Combines resolved paths into a `Paths` struct for easy management of required executables and directories.
+    ///
+    /// 9. **Plugin Archive**:
+    ///     - Constructs the plugin archive filename based on the resolved plugin name.
+    ///
+    /// # Returns
+    /// If all paths and settings are configured successfully, the function initializes and returns a new `PrevisbineBuilder` instance:
+    /// * `args` - The input arguments passed to the function.
+    /// * `paths` - Resolved and packaged paths for required tools and directories.
+    /// * `ckpe_settings` - Configuration for CKPE.
+    /// * `plugin_name` - Processed plugin name without file extension.
+    /// * `plugin_name_ext` - Full plugin name including extension.
+    /// * `plugin_archive` - Archive file name associated with the plugin.
+    /// * `logfile` - Path to the primary log file.
+    /// * `unattended_logfile` - Path to the unattended script log file.
+    ///
+    /// # Errors
+    /// This function may return an error (`Err(String)`) in the following cases:
+    /// * The FO4Edit path cannot be resolved.
+    /// * The Fallout 4 path cannot be located successfully.
+    ///
+    /// # Examples
+    /// ```rust
+    /// let args = Args {
+    ///     fo4edit_path: Some(String::from("path/to/FO4Edit.exe")),
+    ///     fallout4_path: Some(String::from("path/to/Fallout4")),
+    ///     bsarch_path: None,
+    ///     use_bsarch: false,
+    ///     plugin: Some(String::from("MyPlugin")),
+    /// };
+    ///
+    /// match PrevisbineBuilder::new(args) {
+    ///     Ok(builder) => {
+    ///         // Successfully created PrevisbineBuilder instance
+    ///         println!("Builder created with plugin: {}", builder.plugin_name);
+    ///     }
+    ///     Err(err) => {
+    ///         // Handle error
+    ///         eprintln!("Error: {}", err);
+    ///     }
+    /// }
+    /// ```
     fn new(args: Args) -> Result<Self, String> {
         // Find path to FO4Edit
         let fo4edit_path = if let Some(path) = args.fo4edit_path.clone() {
@@ -314,6 +395,48 @@ impl PrevisbineBuilder {
     }
 
 
+    ///
+    /// Prompts the user to input a plugin name if none is specified. Processes the input to extract or assign
+    /// a valid plugin name and its corresponding file extension. This function also updates the plugin name,
+    /// its extension, and the associated plugin archive property within the object.
+    ///
+    /// # Returns
+    ///
+    /// - `Ok(())`: If the user inputs a valid plugin name.
+    /// - `Err(String)`: If the user fails to input a plugin name or if there is an error reading input from the user.
+    ///
+    /// # Behavior
+    ///
+    /// - If the user provides a valid plugin name that ends with `.esp`, `.esm`, or `.esl`, 
+    ///   the function assigns it directly to `self.plugin_name_ext` and stores the name without
+    ///   the extension in `self.plugin_name`.
+    /// - If the user provides a plugin name without an extension, `.esp` is appended by default
+    ///   and assigned to `self.plugin_name_ext`, while the original input becomes `self.plugin_name`.
+    /// - Additionally, the function constructs the value for `self.plugin_archive` by formatting 
+    ///   the `self.plugin_name` with the suffix `- Main.ba2`.
+    ///
+    /// # Errors
+    ///
+    /// - If the input is empty after being trimmed or if there is an error reading from stdin, 
+    ///   the function returns an appropriate error message.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// let mut plugin_handler = PluginHandler {
+    ///     plugin_name: String::new(),
+    ///     plugin_name_ext: String::new(),
+    ///     plugin_archive: String::new(),
+    /// };
+    ///
+    /// if let Err(e) = plugin_handler.prompt_for_plugin_name() {
+    ///     eprintln!("Failed to get plugin name: {}", e);
+    /// } else {
+    ///     println!("Plugin Name: {}", plugin_handler.plugin_name);
+    ///     println!("Plugin Name with Extension: {}", plugin_handler.plugin_name_ext);
+    ///     println!("Plugin Archive: {}", plugin_handler.plugin_archive);
+    /// }
+    /// ```
     fn prompt_for_plugin_name(&mut self) -> Result<(), String> {
         println!("No plugin specified. Please enter a plugin name:");
         print!("Enter plugin name: ");
@@ -352,7 +475,52 @@ impl PrevisbineBuilder {
         Ok(())
     }
 
-    // Add this new method to prompt for stage number
+    
+    /// Prompts the user to choose a build stage to start from and returns the selected stage.
+    ///
+    /// # Parameters
+    /// - `self`: The instance of the struct implementing this function.
+    /// - `build_mode`: A reference to the current `BuildMode`. This determines which stages are applicable for selection.
+    ///
+    /// # Returns
+    /// Returns a `Result`:
+    /// - `Ok(BuildStage)`: The build stage chosen by the user.
+    /// - `Err(String)`: An error message if there is an issue with input or if the stage is invalid.
+    ///
+    /// # Behavior
+    /// - Prints a list of build stages (excluding `VerifyEnvironment`).
+    /// - Filters out stages based on the provided `build_mode`.
+    ///   - For `BuildMode::Clean`, all stages are presented for selection.
+    ///   - For other modes:
+    ///     - `BuildStage::CompressPsg`
+    ///     - `BuildStage::BuildCdx`
+    ///     are excluded from the options.
+    /// - Prompts the user to input a stage number and validates the input:
+    ///   - Displays an error if the input is invalid (non-numeric or out of expected range).
+    ///   - Returns a corresponding `BuildStage` instance for a valid input.
+    ///
+    /// # Input Format
+    /// - The user is prompted to enter a number between 1 and 8 (inclusive) corresponding to a stage.
+    /// - Non-numeric or non-existent stage numbers will result in a validation error.
+    ///
+    /// # Errors
+    /// This function returns an error in the following cases:
+    /// - Failure to read input from stdin.
+    /// - The user enters an invalid stage number (non-numeric or unsupported).
+    ///
+    /// # Example
+    /// ```no_run
+    /// let build_mode = BuildMode::Clean;
+    /// match instance.prompt_for_stage(&build_mode) {
+    ///     Ok(stage) => println!("Selected stage: {:?}", stage),
+    ///     Err(err) => println!("Error: {}", err),
+    /// }
+    /// ```
+    ///
+    /// # Notes
+    /// - This function interacts directly with the console (stdout and stdin).
+    /// - It uses the `BuildStage` enum and assumes numerical mapping to each build stage (via `from_i32`).
+    /// - The `get_stage_description()` function is used to provide a human-readable description for each stage.
     fn prompt_for_stage(&self, build_mode: &BuildMode) -> Result<BuildStage, String> {
         println!("Plugin already exists. Choose a stage to start from:");
 
@@ -387,7 +555,56 @@ impl PrevisbineBuilder {
             .ok_or_else(|| format!("Invalid stage number: {}", stage_num))
     }
 
-    // Helper method to get descriptive stage names
+    
+    /// Returns a string description of the specified build stage.
+    ///
+    /// This function maps each variant of the `BuildStage` enum
+    /// to a corresponding static description that explains the purpose
+    /// or objective of that stage in human-readable terms.
+    ///
+    /// # Arguments
+    ///
+    /// * `stage` - A `BuildStage` enum variant representing the current stage
+    ///   of the build process.
+    ///
+    /// # Returns
+    ///
+    /// A static string slice (`&'static str`) describing the specified
+    /// build stage.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// let description = some_instance.get_stage_description(BuildStage::VerifyEnvironment);
+    /// assert_eq!(description, "Verify Environment");
+    /// ```
+    ///
+    /// # Build Stages Description
+    ///
+    /// - `BuildStage::VerifyEnvironment`:
+    ///   "Verify Environment", meaning the system environment is being validated.
+    /// - `BuildStage::GeneratePrecombines`:
+    ///   "Generate Precombines Via CK", indicating the generation of precombines using the CK.
+    /// - `BuildStage::MergePrecombines`:
+    ///   "Merge PrecombineObjects.esp Via FO4Edit", specifies combining precombine ESPs utilizing FO4Edit.
+    /// - `BuildStage::ArchivePrecombines`:
+    ///   "Create BA2 Archive from Precombines", detailing the creation of BA2 archive files of the precombines.
+    /// - `BuildStage::CompressPsg`:
+    ///   "Compress PSG Via CK", relating to the compression of PSG files using the CK.
+    /// - `BuildStage::BuildCdx`:
+    ///   "Build CDX Via CK", describing the construction of CDX files with the CK.
+    /// - `BuildStage::GeneratePrevis`:
+    ///   "Generate Previs Via CK", referring to generating previs files with the CK.
+    /// - `BuildStage::MergePrevis`:
+    ///   "Merge Previs.esp Via FO4Edit", outlines merging previs ESP files using FO4Edit.
+    /// - `BuildStage::ArchiveVis`:
+    ///   "Add vis files to BA2 Archive", entails adding visibility files to a BA2 archive.
+    ///
+    /// # Note
+    ///
+    /// This method assumes that each `BuildStage` has a corresponding descriptive
+    /// string. Any changes to the `BuildStage` enum will require updating
+    /// this function accordingly.
     fn get_stage_description(&self, stage: BuildStage) -> &'static str {
         match stage {
             BuildStage::VerifyEnvironment => "Verify Environment",
@@ -402,13 +619,67 @@ impl PrevisbineBuilder {
         }
     }
 
+    /// Displays the available stages for resuming a process and provides instructions for user input.
+    ///
+    /// This method outputs:
+    /// 1. A header message indicating the available stages to resume from.
+    /// 2. A list of stages, retrieved by calling `BuildStage::display_stages`, which is dependent on the mode provided in `self.args.mode`.
+    /// 3. A prompt instructing the user to input a stage number (0 to 8) to resume from a specific stage or any other key to exit.
+    ///
+    /// # Example Output:
+    /// ```text
+    /// Available stages to resume from:
+    /// [List of stages specific to the selected mode]
+    /// Enter stage number (0-8) to resume from that stage, or any other key to exit.
+    /// ```
+    ///
+    /// # Note:
+    /// - This method does not handle the user's input or the resumption logic.
+    /// - It assumes `BuildStage::display_stages` is a function that generates a meaningful, formatted list of stages as a string.
+    ///
+    /// # Preconditions:
+    /// - `self.args.mode` must be properly initialized before calling this function.
+    ///
+    /// # Usage:
+    /// Call this method to inform the user about the stages in a build process and their options for resuming the process.
     fn display_stages(&self) {
         println!("Available stages to resume from:");
         print!("{}", BuildStage::display_stages(&self.args.mode));
         println!("Enter stage number (0-8) to resume from that stage, or any other key to exit.");
     }
 
-    // This method checks if a directory has files matching a pattern
+    
+    /// Checks if the specified directory contains any files with the given file extension.
+    ///
+    /// # Arguments
+    ///
+    /// * `dir_path` - A reference to a `PathBuf` that represents the path to the directory to be checked.
+    /// * `extension` - A string slice representing the file extension to look for (e.g., `".txt"`) in the directory.
+    ///
+    /// # Returns
+    ///
+    /// * `true` if the directory contains at least one file with the specified extension.
+    /// * `false` if the directory does not exist, cannot be read, or contains no files with the given extension.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::path::PathBuf;
+    ///
+    /// let directory = PathBuf::from("path/to/directory");
+    /// let has_txt_files = directory_has_files(&directory, ".txt");
+    ///
+    /// if has_txt_files {
+    ///     println!("The directory contains .txt files.");
+    /// } else {
+    ///     println!("The directory does not contain .txt files.");
+    /// }
+    /// ```
+    ///
+    /// # Note
+    ///
+    /// This function performs a case-sensitive check when matching the file extension.
+    /// If the directory cannot be read (e.g., due to permissions), the function returns `false`.
     fn directory_has_files(&self, dir_path: &PathBuf, extension: &str) -> bool {
         if !dir_path.exists() {
             return false;
@@ -428,6 +699,82 @@ impl PrevisbineBuilder {
 
         false
     }
+    /// Validates the prerequisites for various build stages required for a Fallout 4 modding pipeline.
+    ///
+    /// This function ensures that certain conditions are met before each build stage can proceed. The
+    /// validations are specific to the given `BuildStage` and check for the existence of required files,
+    /// directories, or configuration settings.
+    ///
+    /// # Parameters
+    /// - `stage: BuildStage`: The build stage to validate prerequisites for.
+    ///
+    /// # Returns
+    /// - `Result<(), String>`: 
+    ///     - `Ok(())` if all prerequisites for the specified stage are met.
+    ///     - `Err(String)` if any prerequisite is missing or invalid, with an error message describing the issue.
+    ///
+    /// # Build Stages and Corresponding Validations:
+    ///
+    /// - `BuildStage::VerifyEnvironment`:
+    ///     - **Validation**: Always succeeds. No additional checks required.
+    ///
+    /// - `BuildStage::GeneratePrecombines`:
+    ///     - **Validation**: Ensures the required plugin file `plugin_name_ext` exists in the `Data` directory.
+    ///     - **Error**: `"ERROR - Plugin <plugin_name_ext> does not exist"`.
+    ///
+    /// - `BuildStage::MergePrecombines`:
+    ///     - **Validation**: Ensures the `precombined` directory contains `.nif` files (precombined meshes).
+    ///     - **Error**: `"ERROR - No precombined meshes found. Run GeneratePrecombines first."`.
+    ///
+    /// - `BuildStage::ArchivePrecombines`:
+    ///     - **Validation**: Same check as `MergePrecombines`. Ensures `.nif` files exist in the `precombined` directory.
+    ///     - **Error**: `"ERROR - No precombined meshes found. Run GeneratePrecombines first."`.
+    ///
+    /// - `BuildStage::CompressPsg`:
+    ///     - **Validation**:
+    ///         - This stage is only allowed when the `BuildMode` is `Clean`.
+    ///         - Ensures the geometry `.psg` file exists in the `Data` directory.
+    ///     - **Errors**:
+    ///         - `"ERROR - CompressPSG is only available in Clean mode"`.
+    ///         - `"ERROR - No Geometry.psg file found. Run GeneratePrecombines first."`.
+    ///
+    /// - `BuildStage::BuildCdx`:
+    ///     - **Validation**: This stage is only allowed when the `BuildMode` is `Clean`.
+    ///     - **Error**: `"ERROR - BuildCDX is only available in Clean mode"`.
+    ///
+    /// - `BuildStage::GeneratePrevis`:
+    ///     - **Validation**: Ensures the required plugin file `plugin_name_ext` exists in the `Data` directory.
+    ///     - **Error**: `"ERROR - Plugin <plugin_name_ext> does not exist"`.
+    ///
+    /// - `BuildStage::MergePrevis`:
+    ///     - **Validations**:
+    ///         - Ensures the `vis` directory contains `.uvd` files (visibility files).
+    ///         - Ensures the `Previs.esp` file exists in the `Data` directory.
+    ///     - **Errors**:
+    ///         - `"ERROR - No visibility files found. Run GeneratePreVisData first."`.
+    ///         - `"ERROR - Previs.esp not found. Run GeneratePreVisData first."`.
+    ///
+    /// - `BuildStage::ArchiveVis`:
+    ///     - **Validation**: Same check as `MergePrevis`. Ensures `.uvd` files exist in the `vis` directory.
+    ///     - **Error**: `"ERROR - No visibility files found. Run GeneratePreVisData first."`.
+    ///
+    /// # Notes
+    /// - File and directory structure assumptions are based on the expected layout of Fallout 4's `Data` directory.
+    /// - This function relies on helper methods like `directory_has_files` to confirm the existence of files
+    ///   with specific extensions in directories.
+    ///
+    /// # Errors
+    /// - If any prerequisite is not met, an error message is returned containing detailed information about
+    ///   what is missing or misconfigured, along with guidance on how to fix it.
+    ///
+    /// # Example
+    /// ```
+    /// let stage = BuildStage::GeneratePrecombines;
+    /// match check_stage_prerequisites(stage) {
+    ///     Ok(_) => println!("Prerequisites met, proceeding with stage."),
+    ///     Err(err) => println!("Failed prerequisites: {}", err),
+    /// }
+    /// ```
     fn check_stage_prerequisites(&self, stage: BuildStage) -> Result<(), String> {
         match stage {
             BuildStage::VerifyEnvironment => Ok(()),
@@ -551,6 +898,45 @@ impl PrevisbineBuilder {
             }
         }
     }
+    /// Attempts to locate the FO4Edit executable on the user's system.
+    ///
+    /// The function searches for FO4Edit or its variations (`FO4Edit64.exe`, `xEdit64.exe`, etc.)
+    /// in the following order:
+    ///
+    /// 1. **Current Directory**: Checks if any of the candidate executable files (`FO4Edit64.exe`,
+    ///    `xEdit64.exe`, `FO4Edit.exe`, `xEdit.exe`) exist in the current working directory.
+    ///
+    /// 2. **Windows Registry**: Searches for the path of the executable in the Windows Registry
+    ///    under the `HKEY_CLASSES_ROOT\FO4Script\DefaultIcon` key.
+    ///
+    /// If the function successfully finds the executable in any of these steps, it returns the
+    /// path to the executable as a `PathBuf`. If no valid executable is found, it returns an
+    /// error message wrapped in a `Result::Err`.
+    ///
+    /// # Returns
+    ///
+    /// - `Ok(PathBuf)` containing the path to the FO4Edit executable if found.
+    /// - `Err(String)` containing an error message if no executable is found.
+    ///
+    /// # Errors
+    ///
+    /// - Returns an error if the current working directory cannot be determined.
+    /// - If no candidate executables are found in both the current directory and the system registry,
+    ///   an error message is returned.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// match find_fo4edit() {
+    ///     Ok(path) => println!("FO4Edit found at: {}", path.display()),
+    ///     Err(err) => println!("Error: {}", err),
+    /// }
+    /// ```
+    ///
+    /// # Platform
+    ///
+    /// This function is designed for Windows systems, as it relies on querying the Windows
+    /// Registry to locate the FO4Edit executable.
     fn find_fo4edit() -> Result<PathBuf, String> {
         // First check current directory
         let current_dir =
@@ -588,6 +974,34 @@ impl PrevisbineBuilder {
         Err("FO4Edit/xEdit not found. Please specify path with --fo4edit_path".to_string())
     }
 
+    /// Attempts to locate the installation path of Fallout 4 by querying the Windows registry.
+    ///
+    /// This function checks the `HKEY_LOCAL_MACHINE\SOFTWARE\Wow6432Node\Bethesda Softworks\Fallout4` 
+    /// registry key for the "installed path" value, which should point to the installation directory
+    /// of Fallout 4. If the path is successfully found, it returns the corresponding `PathBuf`. 
+    /// Otherwise, it returns an error message indicating that the installation could not be located.
+    ///
+    /// # Returns
+    /// * `Ok(PathBuf)` - If the installation path is found in the registry.
+    /// * `Err(String)` - If the path is not found or an error occurs while accessing the registry.
+    ///
+    /// # Errors
+    /// Returns an error if:
+    /// - The registry key does not exist.
+    /// - The "installed path" value does not exist in the key.
+    /// - Any other error occurs while accessing or reading from the registry.
+    ///
+    /// # Notes
+    /// If the function fails to locate the Fallout 4 installation path, the user may need to 
+    /// specify the path manually using a parameter such as `--fallout4_path`.
+    ///
+    /// # Example
+    /// ```rust
+    /// match find_fallout4() {
+    ///     Ok(path) => println!("Fallout 4 installation found at: {:?}", path),
+    ///     Err(err) => eprintln!("Error: {}", err),
+    /// }
+    /// ```
     fn find_fallout4() -> Result<PathBuf, String> {
         // Try registry
         let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
@@ -604,6 +1018,60 @@ impl PrevisbineBuilder {
         )
     }
 
+    /// Validates the environment for required files, directories, and settings necessary for 
+    /// the application to function properly. The function performs various checks on the file paths, 
+    /// versions, and configurations, including:
+    ///
+    /// 1. **FO4Edit**: Checks if FO4Edit exists in the expected location.
+    /// 2. **Fallout4.exe**: Verifies Fallout4 executable is located in the specified directory.
+    /// 3. **Creation Kit**: Ensures Creation Kit (CreationKit.exe) is properly installed.
+    /// 4. **CKPE (winhttp.dll)**: Verifies the presence of CKPE for extended patching.
+    /// 5. **Archive2.exe**: Checks that the Archive2 tool exists, verifying proper Creation Kit setup.
+    /// 6. **CKPE INI File**: Ensures the CKPE configuration file exists with correct settings.
+    /// 7. **Required xEdit Scripts**: Validates the presence of essential xEdit scripts and ensures
+    ///    their versions meet the required minimum.
+    /// 8. **CK Logging Configuration**: Confirms that the Creation Kit is properly configured 
+    ///    for log redirection to a specified log file.
+    /// 9. **Increased Reference Limit Setting**: Checks if the handle limit setting is enabled in 
+    ///    the CKPE INI file, warning the user if it's missing to prevent potential failures.
+    /// 10. **BSArch**: If BSArch is enabled, validates the presence of BSArch at the specified path.
+    ///
+    /// ### Parameters
+    /// None.
+    ///
+    /// ### Returns
+    /// - `Ok(())` if the environment is valid and all checks pass.
+    /// - `Err(String)` if any required file, directory, configuration, or version is missing or invalid, 
+    ///   with a detailed error message describing the issue.
+    ///
+    /// ### Error Details
+    /// - **Missing Files**: Returns an error if any expected file or directory is not found.
+    /// - **Invalid Versions**: Returns an error if the detected script version is older 
+    ///   than the required minimum.
+    /// - **Configuration Issues**: Returns an error if essential INI file settings are missing 
+    ///   or misconfigured.
+    /// - **BSArch Missing**: Returns an error if BSArch is enabled but its path is invalid or absent.
+    ///
+    /// ### Notes
+    /// - If the specified CKPE INI file does not exist, but a fallback configuration (`fallout4_test.ini`) 
+    ///   exists, the function automatically switches to the fallback.
+    /// - Warnings may be issued in non-blocking cases, such as disabled handle limits, for 
+    ///   better user guidance.
+    ///
+    /// ### Dependencies
+    /// - The function relies on filesystem operations and regex-based parsing to validate scripts
+    ///   and INI file contents.
+    /// - External libraries such as `regex` and file-processing utilities (`File`, `BufReader`) 
+    ///   are used.
+    ///
+    /// ### Example Usage
+    /// ```rust
+    /// let mut environment = Environment::new();
+    /// match environment.verify_environment() {
+    ///     Ok(_) => println!("Environment verified successfully."),
+    ///     Err(e) => eprintln!("Environment verification failed: {}", e),
+    /// }
+    /// ```
     fn verify_environment(&mut self) -> Result<(), String> {
         // Check FO4Edit
         if !self.paths.fo4edit.exists() {
@@ -786,6 +1254,54 @@ impl PrevisbineBuilder {
         Ok(())
     }
 
+    /// Checks the specified plugin and performs the necessary actions to ensure its existence in the correct location.
+    ///
+    /// # Details
+    /// - Verifies if the plugin file exists in the expected directory (`Data` folder of the Fallout 4 paths).
+    /// - Ensures there is no pre-existing archive associated with the plugin. If an archive exists, returns an error.
+    /// - If the plugin does not exist:
+    ///   - Attempts to use a fallback file named `xPrevisPatch.esp` as a seed for the plugin.
+    ///   - If the fallback file `xPrevisPatch.esp` also does not exist, returns an error.
+    ///   - If the `--no-prompt` argument is set, automatically fails with an error if the plugin is missing.
+    ///   - Otherwise, prompts the user for confirmation to rename `xPrevisPatch.esp` to the expected plugin name. 
+    ///     If the user agrees, attempts to copy the fallback file to create the plugin.
+    ///   - Waits briefly to allow MO2 (Mod Organizer 2) to process the new file.
+    ///   - Verifies if the plugin file was successfully created, otherwise returns an error.
+    ///
+    /// # Return
+    /// Returns `Ok(())` if the plugin is successfully validated or created. Otherwise, returns a `String` error indicating
+    /// the reason for failure.
+    ///
+    /// # Errors
+    /// The function can return a variety of errors, including:
+    /// - If the plugin already has an associated archive file.
+    /// - If neither the plugin file nor the fallback `xPrevisPatch.esp` file exists.
+    /// - If user chooses not to rename `xPrevisPatch.esp` during the prompt.
+    /// - If there are file system issues (e.g., copying the seed file fails).
+    /// - If MO2 fails to properly process the newly created plugin file.
+    ///
+    /// # Examples
+    /// ```rust
+    /// let mut obj = StructName {
+    ///     plugin_name_ext: "example.esp".to_string(),
+    ///     plugin_archive: "example.ba2".to_string(),
+    ///     paths: Paths {
+    ///         fallout4: PathBuf::from("C:/Games/Fallout4"),
+    ///     },
+    ///     args: Arguments { no_prompt: false },
+    /// };
+    ///
+    /// let result = obj.check_plugin();
+    /// match result {
+    ///     Ok(_) => println!("Plugin check completed successfully."),
+    ///     Err(err) => eprintln!("Error occurred: {}", err),
+    /// }
+    /// ```
+    ///
+    /// # Notes
+    /// - This function interacts with the file system to check and manipulate plugin files, so adequate permissions are
+    ///   required to avoid errors.
+    /// - Make sure that the Fallout 4 game path and related file structures are correctly configured in `self.paths` beforehand.
     fn check_plugin(&mut self) -> Result<(), String> {
         info!("Checking plugin: {}", self.plugin_name_ext);
 
@@ -834,6 +1350,55 @@ impl PrevisbineBuilder {
         Ok(())
     }
 
+    /// Executes a specified action using the Creation Kit (CK) with given parameters and handles various related tasks.
+    ///
+    /// This function performs the following operations:
+    /// 1. Disables certain DLL files (e.g., ENB/ReShade-related) to avoid potential conflicts.
+    /// 2. Deletes an existing CK log file if it exists, ensuring a clean log output for this operation.
+    /// 3. Logs the current action into the program's own log file.
+    /// 4. Constructs and executes the Creation Kit command with the specified options and arguments.
+    /// 5. Waits briefly to allow file operations by MO2 to complete post CK execution.
+    /// 6. Appends the CK log contents to the program's own log file, if a valid CK log exists.
+    /// 7. Verifies if the expected output file was created by the Creation Kit, returning an error if the file is missing.
+    /// 8. Handles and logs the Creation Kit's exit status to identify any potential issues.
+    /// 9. Re-enables the previously disabled DLLs after the operation is complete.
+    ///
+    /// # Arguments
+    /// - `action`: The CK action to execute (e.g., `Export` or `Compile`).
+    /// - `output_file`: The expected name of the output file to verify after CK execution.
+    /// - `args`: Additional command-line arguments to pass to the Creation Kit.
+    ///
+    /// # Returns
+    /// - `Ok(())`: If the operation completes successfully.
+    /// - `Err(String)`: If an error occurs at any stage during the execution.
+    ///
+    /// # Errors
+    /// Errors may occur during the following steps:
+    /// - If disabling or re-enabling DLLs fails due to file system operations.
+    /// - If the specified CK log file cannot be deleted, read, or appended to the program's log.
+    /// - If executing the Creation Kit fails.
+    /// - If the expected output file is not created successfully.
+    ///
+    /// # Dependencies
+    /// This function relies on the following components/paths being properly set:
+    /// - `self.paths.creation_kit`: The path to the Creation Kit executable.
+    /// - `self.paths.fallout4`: The Fallout 4 directory where relevant files are located.
+    /// - `self.plugin_name_ext`: The plugin name or extension used for the CK operation.
+    /// - `self.ckpe_settings.log_file`: Path to the CK-specific log file to monitor CK output.
+    /// - `self.logfile`: Path to the program's log file for recording the operation.
+    ///
+    /// # Example
+    /// ```rust
+    /// let result = my_instance.run_creation_kit("Export", "MyFile.esp", "-SomeCommandLineArgs");
+    /// if let Err(e) = result {
+    ///     eprintln!("An error occurred: {}", e);
+    /// }
+    /// ```
+    ///
+    /// # Notes
+    /// - The function logs warnings instead of failing if the Creation Kit exits with a non-zero status but generates the expected output.
+    /// - A short delay (`sleep`) is introduced after CK execution to ensure post-processing by external tools like MO2 completes.
+    /// - Proper error handling ensures all file system operations are safely executed, with informative error messages in case of failures.
     fn run_creation_kit(&self, action: &str, output_file: &str, args: &str) -> Result<(), String> {
         info!("Running CK option {}", action);
 
@@ -1126,6 +1691,24 @@ impl PrevisbineBuilder {
     }
 
 
+    /// Retrieves the appropriate archive qualifiers based on the build mode.
+    ///
+    /// # Returns
+    ///
+    /// A `&'static str` representing the additional qualifiers for archiving:
+    /// - If the build mode is `BuildMode::Xbox`, returns `"-compression=XBox"`.
+    /// - For all other build modes, returns an empty string (`""`).
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// let qualifiers = instance.get_archive_qualifiers();
+    /// println!("{}", qualifiers);
+    /// ```
+    ///
+    /// # Notes
+    /// - The function relies on the `self.args.mode` field to determine the build mode.
+    /// - The returned string is static, i.e., it has a `'static` lifetime.
     fn get_archive_qualifiers(&self) -> &'static str {
         match self.args.mode {
             BuildMode::Xbox => "-compression=XBox",
@@ -1133,6 +1716,71 @@ impl PrevisbineBuilder {
         }
     }
 
+    /// Runs an xEdit script against two specified plugin files and logs the results.
+    ///
+    /// This method automates the process of executing an xEdit script with given parameters,
+    /// captures logs, and ensures the expected results by checking for completion messages.
+    ///
+    /// # Parameters
+    ///
+    /// - `script`: The name of the xEdit script to be executed. It is assumed to reside
+    ///   in the `Edit Scripts` directory under the xEdit path.
+    /// - `plugin1`: The name of the primary plugin file for the script to process.
+    /// - `plugin2`: The name of the secondary plugin file, if applicable, for the script.
+    ///
+    /// # Returns
+    ///
+    /// Returns `Ok(())` if the script executed successfully and produced the expected results.
+    /// Returns `Err(String)` with an error message if any step of the execution fails:
+    /// - Issues with file I/O operations (e.g., log files and plugin list file).
+    /// - Errors starting or interacting with the xEdit process.
+    /// - Failure to detect or parse the xEdit log file.
+    ///
+    /// # Behavior
+    ///
+    /// 1. Logs the start of the script execution to the main log file.
+    /// 2. Creates a temporary `Plugins.txt` file listing the plugin files to be processed by xEdit.
+    /// 3. Removes any existing unattended log file from previous runs.
+    /// 4. Starts the xEdit process with the provided parameters (including script, plugins, etc.).
+    /// 5. Waits for xEdit to generate a log file and exits.
+    /// 6. Appends the xEdit log content to the main log file.
+    /// 7. Verifies the xEdit log file for a successful completion message.
+    ///
+    /// # Error Handling
+    ///
+    /// - File operations (e.g., opening, creating, writing, or reading files) are error-checked.
+    /// - If the xEdit process fails to start, terminates prematurely, or does not produce a log file,
+    ///   an error message is returned.
+    /// - An additional check is performed on the xEdit log file to ensure the script executed successfully;
+    ///   failure results in an error.
+    ///
+    /// # Assumptions
+    ///
+    /// - The `self.logfile` is a valid writable file path for logging script execution details.
+    /// - The `self.unattended_logfile` path is used to store xEdit-generated logs.
+    /// - The `self.paths.fo4edit` points to the executable path of xEdit.
+    ///
+    /// # Limitations
+    ///
+    /// - The method simulates keypresses or waits for the xEdit process without directly interacting 
+    ///   with its GUI (this requires external libraries like `winapi` for precise automation).
+    /// - Relies on wait durations (`sleep`) to ensure the process completes, which may not be optimal 
+    ///   for all environments.
+    ///
+    /// # Example Usage
+    ///
+    /// ```rust
+    /// let result = instance.run_xedit_script("MyScript.pas", "Plugin1.esp", "Plugin2.esp");
+    /// match result {
+    ///     Ok(_) => println!("Script ran successfully."),
+    ///     Err(e) => eprintln!("Error: {}", e),
+    /// }
+    /// ```
+    ///
+    /// # Notes
+    ///
+    /// - Ensure xEdit and any required files are properly set up and accessible in the specified paths.
+    /// - Proper error propagation ensures this function can be used reliably for automated workflows.
     fn run_xedit_script(&self, script: &str, plugin1: &str, plugin2: &str) -> Result<(), String> {
         info!("Running xEdit script {} against {}", script, plugin1);
 
@@ -1230,6 +1878,42 @@ impl PrevisbineBuilder {
         Ok(())
     }
 
+    /// Prompts the user with a yes/no question and returns their response.
+    ///
+    /// If the `no_prompt` flag in `self.args` is set, the function will 
+    /// automatically return `Ok(true)` without prompting the user. 
+    /// Otherwise, it displays the provided message, waits for user input, and 
+    /// interprets it as a "yes" (if it starts with 'y' or 'Y') or "no" otherwise. 
+    ///
+    /// # Arguments
+    ///
+    /// * `message` - The question or message to display to the user.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(true)` if the user input starts with 'y' or if `no_prompt` is enabled.
+    /// * `Ok(false)` if the user input doesn't start with 'y'.
+    /// * `Err(String)` if there was an error reading input from standard input.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// let result = prompt_yes_no("Do you want to continue?");
+    /// match result {
+    ///     Ok(true) => println!("User selected 'Yes'."),
+    ///     Ok(false) => println!("User selected 'No'."),
+    ///     Err(e) => eprintln!("Error: {}", e),
+    /// }
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns an error string if there is an issue reading input from standard input.
+    ///
+    /// # Note
+    ///
+    /// The user input is trimmed and converted to lowercase before evaluation, 
+    /// and only the starting character is checked to determine the response.
     fn prompt_yes_no(&self, message: &str) -> Result<bool, String> {
         if self.args.no_prompt {
             return Ok(true);
