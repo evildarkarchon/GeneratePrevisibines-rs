@@ -121,9 +121,9 @@ fn find_fo4edit() -> Result<PathBuf, String> {
 
 /// Attempts to locate the installation path of Fallout 4 by querying the Windows registry.
 ///
-/// This function checks the `HKEY_LOCAL_MACHINE\SOFTWARE\Wow6432Node\Bethesda Softworks\Fallout4` 
+/// This function checks the `HKEY_LOCAL_MACHINE\SOFTWARE\Wow6432Node\Bethesda Softworks\Fallout4`
 /// registry key for the "installed path" value, which should point to the installation directory
-/// of Fallout 4. If the path is successfully found, it returns the corresponding `PathBuf`. 
+/// of Fallout 4. If the path is successfully found, it returns the corresponding `PathBuf`.
 /// Otherwise, it returns an error message indicating that the installation could not be located.
 ///
 /// # Returns
@@ -137,15 +137,9 @@ fn find_fo4edit() -> Result<PathBuf, String> {
 /// - Any other error occurs while accessing or reading from the registry.
 ///
 /// # Notes
-/// If the function fails to locate the Fallout 4 installation path, the user may need to 
+/// If the function fails to locate the Fallout 4 installation path, the user may need to
 /// specify the path manually using a parameter such as `--fallout4_path`.
 ///
-/// # Example
-/// ```rust
-/// match find_fallout4() {
-///     Ok(path) => println!("Fallout 4 installation found at: {:?}", path),
-///     Err(err) => eprintln!("Error: {}", err),
-/// }
 /// ```
 fn find_fallout4() -> Result<PathBuf, String> {
     // Try registry on Windows

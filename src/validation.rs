@@ -79,7 +79,7 @@ pub fn verify_environment(
             let reader = BufReader::new(file);
             let mut version_found = false;
 
-            let version_regex = Regex::new(r"BatchVersion[\s]*=[\s]*(\d+)").unwrap();
+            let version_regex = Regex::new(r"BatchVersion\s*=\s*(\d+)").unwrap();
 
             for line in reader.lines() {
                 if let Ok(line_content) = line {

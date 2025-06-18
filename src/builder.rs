@@ -179,7 +179,7 @@ impl PrevisbineBuilder {
                     Ok(stage)
                 }
                 None => {
-                    return Err(format!("ERROR - Invalid stage number: {}", stage));
+                    Err(format!("ERROR - Invalid stage number: {}", stage))
                 }
             }
         } else if self.plugin_name.is_empty() {
